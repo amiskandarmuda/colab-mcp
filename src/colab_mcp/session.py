@@ -226,10 +226,17 @@ class ColabProxyMiddleware(Middleware):
             )
 
 
-def _make_check_session_proxy_tool(
+def _make_injected_tools(
     proxy_client: ColabProxyClient,
-) -> Tool:
-    """Create the open_colab_browser_connection tool bound to a specific proxy client."""
+) -> list[Tool]:
+    """Create all injected tools: connection tool + notebook stub tools.
+
+    The stub tools are pre-registered so MCP clients that snapshot tools at
+    startup can discover them immediately. When the browser is not connected,
+    they return a helpful message. When connected, the proxy forwards calls
+    to the real browser-side MCP transparently (the middleware intercepts
+    calls to stub tool names and delegates to the proxy when connected).
+    """
 
     async def check_session_proxy_tool_fn() -> bool:
         if proxy_client.is_connected():
@@ -239,11 +246,45 @@ def _make_check_session_proxy_tool(
         )
         return False
 
-    return Tool.from_function(
-        fn=check_session_proxy_tool_fn,
-        name=INJECTED_TOOL_NAME,
-        description="Opens a connection to a Google Colab browser session and unlocks notebook editing tools. Returns a boolean representing whether the connection attempt succeeded",
-    )
+    async def add_code_cell_stub(code: str = "", cellIndex: int = -1) -> str:
+        return NOT_CONNECTED_MSG
+
+    async def add_text_cell_stub(content: str = "", cellIndex: int = -1) -> str:
+        return NOT_CONNECTED_MSG
+
+    async def execute_cell_stub(cellIndex: int = 0) -> str:
+        return NOT_CONNECTED_MSG
+
+    async def update_cell_stub(cellId: str = "", content: str = "") -> str:
+        return NOT_CONNECTED_MSG
+
+    return [
+        Tool.from_function(
+            fn=check_session_proxy_tool_fn,
+            name=INJECTED_TOOL_NAME,
+            description="Opens a connection to a Google Colab browser session and unlocks notebook editing tools. Returns a boolean representing whether the connection attempt succeeded",
+        ),
+        Tool.from_function(
+            fn=add_code_cell_stub,
+            name="add_code_cell",
+            description="Add a new code cell to the Colab notebook. Requires an active browser connection via open_colab_browser_connection.",
+        ),
+        Tool.from_function(
+            fn=add_text_cell_stub,
+            name="add_text_cell",
+            description="Add a new text/markdown cell to the Colab notebook. Requires an active browser connection via open_colab_browser_connection.",
+        ),
+        Tool.from_function(
+            fn=execute_cell_stub,
+            name="execute_cell",
+            description="Execute a cell in the Colab notebook. Requires an active browser connection via open_colab_browser_connection.",
+        ),
+        Tool.from_function(
+            fn=update_cell_stub,
+            name="update_cell",
+            description="Update the contents of an existing cell in the Colab notebook. Requires an active browser connection via open_colab_browser_connection.",
+        ),
+    ]
 
 
 class ColabSessionProxy:
@@ -263,10 +304,10 @@ class ColabSessionProxy:
             client_factory=proxy_client.client_factory,
             instructions="Connects to a user's Google Colab session in a browser and allows for interactions with their Google Colab notebook",
         )
-        check_session_proxy_tool = _make_check_session_proxy_tool(proxy_client)
+        injected_tools = _make_injected_tools(proxy_client)
         self.middleware.append(ColabProxyMiddleware(proxy_client))
         self.middleware.append(
-            ToolInjectionMiddleware(tools=[check_session_proxy_tool])
+            ToolInjectionMiddleware(tools=injected_tools)
         )
 
     async def cleanup(self):
