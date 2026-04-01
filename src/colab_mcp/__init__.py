@@ -73,9 +73,9 @@ async def open_colab_browser_connection() -> str:
 
 
 @mcp.tool()
-async def add_code_cell(code: str = "", cellIndex: int = -1) -> str:
+async def add_code_cell(code: str = "", cellIndex: int = 0, language: str = "python") -> str:
     """Add a new code cell to the Colab notebook. Requires an active browser connection via open_colab_browser_connection."""
-    return await _forward_or_stub("add_code_cell", {"code": code, "cellIndex": cellIndex})
+    return await _forward_or_stub("add_code_cell", {"code": code, "cellIndex": cellIndex, "language": language})
 
 
 @mcp.tool()
@@ -85,9 +85,14 @@ async def add_text_cell(content: str = "", cellIndex: int = -1) -> str:
 
 
 @mcp.tool()
-async def execute_cell(cellIndex: int = 0) -> str:
-    """Execute a cell in the Colab notebook. Requires an active browser connection via open_colab_browser_connection."""
-    return await _forward_or_stub("execute_cell", {"cellIndex": cellIndex})
+async def execute_cell(cellId: str = "", cellIndex: int = 0) -> str:
+    """Execute a cell in the Colab notebook. Pass cellId (from add_code_cell result) or cellIndex. Requires an active browser connection via open_colab_browser_connection."""
+    args = {}
+    if cellId:
+        args["cellId"] = cellId
+    else:
+        args["cellId"] = str(cellIndex)
+    return await _forward_or_stub("run_code_cell", args)
 
 
 @mcp.tool()
