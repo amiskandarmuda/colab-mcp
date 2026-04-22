@@ -68,11 +68,19 @@ class TestDirectTools:
             tools = await client.list_tools()
             tool_names = {t.name for t in tools}
             assert tool_names == {
+                "get_colab_connection_url",
+                "get_colab_connection_status",
+                "wait_for_colab_browser_connection",
                 "open_colab_browser_connection",
                 "add_code_cell",
                 "add_text_cell",
                 "execute_cell",
+                "inspect_cell_images",
                 "update_cell",
+                "get_cells",
+                "delete_cell",
+                "move_cell",
+                "change_runtime",
             }
 
     @pytest.mark.asyncio
@@ -80,6 +88,71 @@ class TestDirectTools:
         from colab_mcp import mcp
         async with Client(mcp) as client:
             result = await client.call_tool("add_code_cell", {"code": "print('hi')"})
+            assert any(
+                session.NOT_CONNECTED_MSG in c.text for c in result.content
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_connection_url_returns_url(self, mock_wss):
+        import colab_mcp as colab_module
+        from colab_mcp import mcp
+        old_proxy = colab_module._proxy_client
+        proxy_client = Mock()
+        proxy_client.wss = mock_wss
+        proxy_client.is_connected.return_value = False
+        colab_module._proxy_client = proxy_client
+        try:
+            async with Client(mcp) as client:
+                result = await client.call_tool("get_colab_connection_url", {})
+                assert any("mcpProxyToken=test-token" in c.text for c in result.content)
+                assert any("mcpProxyPort=1234" in c.text for c in result.content)
+        finally:
+            colab_module._proxy_client = old_proxy
+
+    @pytest.mark.asyncio
+    async def test_get_connection_status_reports_disconnected(self, mock_wss):
+        import colab_mcp as colab_module
+        from colab_mcp import mcp
+        old_proxy = colab_module._proxy_client
+        proxy_client = Mock()
+        proxy_client.wss = mock_wss
+        proxy_client.is_connected.return_value = False
+        colab_module._proxy_client = proxy_client
+        try:
+            async with Client(mcp) as client:
+                result = await client.call_tool("get_colab_connection_status", {})
+                assert any("Not connected to a Google Colab browser session." in c.text for c in result.content)
+        finally:
+            colab_module._proxy_client = old_proxy
+
+    @pytest.mark.asyncio
+    async def test_get_connection_url_accepts_drive_notebook_target(self, mock_wss):
+        import colab_mcp as colab_module
+        from colab_mcp import mcp
+        old_proxy = colab_module._proxy_client
+        old_base = colab_module._connection_base_url
+        proxy_client = Mock()
+        proxy_client.wss = mock_wss
+        proxy_client.is_connected.return_value = False
+        colab_module._proxy_client = proxy_client
+        try:
+            async with Client(mcp) as client:
+                result = await client.call_tool(
+                    "get_colab_connection_url",
+                    {"target_url": "https://colab.research.google.com/drive/abc123"},
+                )
+                text = next(c.text for c in result.content if hasattr(c, "text"))
+                assert text.startswith("https://colab.research.google.com/drive/abc123#mcpProxyToken=test-token")
+                assert "mcpProxyPort=1234" in text
+        finally:
+            colab_module._proxy_client = old_proxy
+            colab_module._connection_base_url = old_base
+
+    @pytest.mark.asyncio
+    async def test_inspect_cell_images_stub_returns_not_connected(self):
+        from colab_mcp import mcp
+        async with Client(mcp) as client:
+            result = await client.call_tool("inspect_cell_images", {"cellIndex": 0})
             assert any(
                 session.NOT_CONNECTED_MSG in c.text for c in result.content
             )
@@ -234,7 +307,10 @@ class TestInjectedTools:
         tools = session._make_injected_tools(proxy_client)
         connection_tool = [t for t in tools if t.name == session.INJECTED_TOOL_NAME][0]
         result = await connection_tool.fn()
-        assert result is True
+        assert result == {
+            "connected": True,
+            "manual_url": "https://colab.research.google.com/notebooks/empty.ipynb#mcpProxyToken=test-token&mcpProxyPort=1234",
+        }
 
     @pytest.mark.asyncio
     async def test_disconnected(self, mock_wss, mock_webbrowser):
@@ -242,11 +318,11 @@ class TestInjectedTools:
         tools = session._make_injected_tools(proxy_client)
         connection_tool = [t for t in tools if t.name == session.INJECTED_TOOL_NAME][0]
         result = await connection_tool.fn()
-        assert result is False
-        mock_webbrowser.assert_called_once()
-        args, _ = mock_webbrowser.call_args
-        assert "mcpProxyToken=test-token" in args[0]
-        assert "mcpProxyPort=1234" in args[0]
+        assert result == {
+            "connected": False,
+            "manual_url": "https://colab.research.google.com/notebooks/empty.ipynb#mcpProxyToken=test-token&mcpProxyPort=1234",
+        }
+        mock_webbrowser.assert_not_called()
 
     def test_has_all_expected_tools(self, mock_wss):
         proxy_client = session.ColabProxyClient(mock_wss)
@@ -257,6 +333,7 @@ class TestInjectedTools:
             "add_code_cell",
             "add_text_cell",
             "execute_cell",
+            "inspect_cell_images",
             "update_cell",
         }
 

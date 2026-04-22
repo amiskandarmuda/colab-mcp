@@ -1,6 +1,6 @@
 [project]
 name = "colab-mcp"
-version = "1.0.1"
+version = "1.1.0"
 description = "An MCP server for Colab"
 readme = "README.md"
 authors = [
@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 colab-mcp = "colab_mcp:main"
+colab-mcp-http = "colab_mcp.cli:main"
 
 [build-system]
 requires = ["hatchling"]

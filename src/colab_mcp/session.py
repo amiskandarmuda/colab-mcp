@@ -25,7 +25,6 @@ from fastmcp.server.proxy import FastMCPProxy
 from fastmcp.tools.tool import Tool, ToolResult
 from mcp.client.session import ClientSession
 from mcp.types import TextContent
-import webbrowser
 
 from colab_mcp.websocket_server import ColabWebSocketServer, COLAB, SCRATCH_PATH
 
@@ -217,13 +216,16 @@ def _make_injected_tools(
     calls to stub tool names and delegates to the proxy when connected).
     """
 
-    async def check_session_proxy_tool_fn() -> bool:
+    async def check_session_proxy_tool_fn() -> dict[str, object]:
         if proxy_client.is_connected():
-            return True
-        webbrowser.open_new(
-            f"{COLAB}{SCRATCH_PATH}#mcpProxyToken={proxy_client.wss.token}&mcpProxyPort={proxy_client.wss.port}"
-        )
-        return False
+            return {
+                "connected": True,
+                "manual_url": f"{COLAB}{SCRATCH_PATH}#mcpProxyToken={proxy_client.wss.token}&mcpProxyPort={proxy_client.wss.port}",
+            }
+        return {
+            "connected": False,
+            "manual_url": f"{COLAB}{SCRATCH_PATH}#mcpProxyToken={proxy_client.wss.token}&mcpProxyPort={proxy_client.wss.port}",
+        }
 
     async def add_code_cell_stub(code: str = "", cellIndex: int = 0, language: str = "python") -> str:
         return NOT_CONNECTED_MSG
@@ -234,6 +236,9 @@ def _make_injected_tools(
     async def execute_cell_stub(cellIndex: int = 0) -> str:
         return NOT_CONNECTED_MSG
 
+    async def inspect_cell_images_stub(cellIndex: int = 0, rerun: bool = True) -> str:
+        return NOT_CONNECTED_MSG
+
     async def update_cell_stub(cellId: str = "", content: str = "") -> str:
         return NOT_CONNECTED_MSG
 
@@ -241,7 +246,7 @@ def _make_injected_tools(
         Tool.from_function(
             fn=check_session_proxy_tool_fn,
             name=INJECTED_TOOL_NAME,
-            description="Opens a connection to a Google Colab browser session and unlocks notebook editing tools. Returns a boolean representing whether the connection attempt succeeded",
+            description="Prepare a connection to a Google Colab browser session and return the exact manual URL. This tool does not open a browser for you.",
         ),
         Tool.from_function(
             fn=add_code_cell_stub,
@@ -257,6 +262,11 @@ def _make_injected_tools(
             fn=execute_cell_stub,
             name="execute_cell",
             description="Execute a cell in the Colab notebook. Requires an active browser connection via open_colab_browser_connection.",
+        ),
+        Tool.from_function(
+            fn=inspect_cell_images_stub,
+            name="inspect_cell_images",
+            description="Run a notebook cell through MCP and export any image/png outputs to local files for inspection inside Codex.",
         ),
         Tool.from_function(
             fn=update_cell_stub,
