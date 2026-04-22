@@ -1,8 +1,8 @@
-# Colab MCP (Enhanced Fork)
+# Colab MCP
 
-An MCP server for controlling Google Colab from AI coding agents. This fork fixes the upstream tool-discovery problem, restores programmatic runtime changes, and adds a small HTTP wrapper so you can run it as a stable local MCP endpoint.
+An MCP server for controlling Google Colab from AI coding agents. It exposes notebook control tools, programmatic runtime changes, and a small HTTP wrapper so you can run it as a stable local MCP endpoint.
 
-## What This Fork Changes
+## What It Includes
 
 - Pre-registers the notebook tools so they show up immediately in MCP clients that do not handle dynamic tool refresh well.
 - Restores `change_runtime` with Google OAuth so an agent can switch Colab runtimes programmatically.
@@ -118,7 +118,7 @@ uv run colab-mcp-http --host 0.0.0.0 --port 9000
 3. Call `wait_for_colab_browser_connection()` if the browser has not attached yet.
 4. Use notebook tools like `add_code_cell`, `execute_cell`, `get_cells`, or `update_cell`.
 
-`open_colab_browser_connection` keeps the upstream tool name for compatibility, but in this fork it returns the manual URL instead of opening a browser for you.
+`open_colab_browser_connection` keeps the original tool name for compatibility, but here it returns the manual URL instead of opening a browser for you.
 
 ### Example Agent Flow
 
@@ -190,10 +190,6 @@ uv run colab-mcp-http --port 8765
 - If you change your MCP config and nothing updates, restart the MCP client.
 - If you expose the HTTP wrapper on a custom port, point your MCP client at `/mcp`, not `/`.
 - To inspect logs, look in the latest `colab-mcp-logs-*` temp directory.
-
-## Upstream Base
-
-This fork is based on [`googlecolab/colab-mcp`](https://github.com/googlecolab/colab-mcp). Google does not accept external contributions there, so the fixes and wrapper live in this fork.
 
 ## License
 
